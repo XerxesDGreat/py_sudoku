@@ -2,16 +2,16 @@ __author__ = 'josh'
 
 import pygame
 import sys
-import grid
+import gameboard
 
 def main():
     pygame.init()
 
-    grid_obj = grid.Grid()
+    grid_obj = gameboard.Grid()
     grid_rect = grid_obj.get_rect()
 
     screen = pygame.display.set_mode((grid_rect.width, grid_rect.height))
-    screen.blit(grid_obj.get_surface(), (0,0))
+    screen.blit(grid_obj.grid, (0,0))
     pygame.display.flip()
 
     while 1:
