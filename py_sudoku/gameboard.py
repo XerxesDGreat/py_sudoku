@@ -40,6 +40,20 @@ class Grid(object):
         """
         return self.grid.get_rect()
 
+    def _get_col_row_box(self, tile_index):
+        """
+        Returns the column, row, and box index for the given tile index
+        :return int:
+        """
+        grid_width = Grid.BOX_X_TILE_COUNT * Grid.GRID_X_BOX_COUNT
+        col = tile_index % grid_width
+        row = tile_index / grid_width
+        box_x = col / Grid.GRID_X_BOX_COUNT
+        box_y = row / Grid.GRID_Y_BOX_COUNT
+        box = box_x + (box_y * Grid.GRID_X_BOX_COUNT)
+
+        return col, row, box
+
     def _create_grid(self):
         """
         Create the grid
@@ -47,6 +61,26 @@ class Grid(object):
         # create all the tiles we need
         tile_x_count = Grid.GRID_X_BOX_COUNT * Grid.BOX_X_TILE_COUNT
         tile_y_count = Grid.GRID_Y_BOX_COUNT * Grid.BOX_Y_TILE_COUNT
+
+        tile_position = (0,0)
+        row = 0
+        column = 0
+        box = 0
+        for i in range(tile_x_count * tile_y_count):
+            # we need a tile before anything else
+            t = self._create_tile(i)
+
+            # check to see if we're starting a box, either vertically
+            # or horizontally; if so, bump the position appropriately
+            col_index, row_index, box_index = self._get_col_row_box(i)
+
+
+
+            # pop it into the total group of tiles
+            self.tiles.add(t)
+
+
+
 
         for i in range(0, (tile_x_count * tile_y_count)):
             self.tiles.add(self._create_tile(i))
@@ -69,6 +103,7 @@ class Grid(object):
             x_coord = (i % Grid.BOX_X_TILE_COUNT) * Tile.TILE_WIDTH + Grid.BOX_BORDER_WIDTH
             y_coord = ((i / Grid.BOX_X_TILE_COUNT) % Grid.BOX_Y_TILE_COUNT) * Tile.TILE_HEIGHT + Grid.BOX_BORDER_WIDTH
             self.boxes[target_box].update(tile, (x_coord, y_coord))
+            tile.box = self.boxes[target_box]
 
             tile_row_offset = (target_box / Grid.GRID_X_BOX_COUNT) * Grid.GRID_Y_BOX_COUNT
             base_row_index = i - (target_box * box_count) / Grid.GRID_X_BOX_COUNT
@@ -76,6 +111,7 @@ class Grid(object):
             if row_index >= len(self.rows):
                 self.rows.append(TileContainer(RowLayout))
             self.rows[row_index].add(tile)
+            tile.row = self.rows[row_index]
 
             tile_column_offset = (target_box % Grid.GRID_Y_BOX_COUNT) * Grid.GRID_Y_BOX_COUNT
             base_column_index = i % Grid.GRID_Y_BOX_COUNT
@@ -83,6 +119,7 @@ class Grid(object):
             if column_index >= len(self.columns):
                 self.columns.append(TileContainer(ColumnLayout))
             self.columns[column_index].add(tile)
+            tile.column = self.columns[column_index]
 
             i += 1
 
@@ -125,6 +162,9 @@ class Tile(pygame.sprite.DirtySprite):
         self.font = None
         self.background = pygame.Surface((Tile.TILE_WIDTH, Tile.TILE_HEIGHT))
         self.set_color(color)
+        self.box = None
+        self.row = None
+        self.column = None
 
     def set_color(self, color = None):
         """
