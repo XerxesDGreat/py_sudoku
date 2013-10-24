@@ -1,7 +1,7 @@
 __author__ = 'josh'
 
 import pygame
-import random
+import colors
 
 class Grid(object):
     """
@@ -13,14 +13,8 @@ class Grid(object):
     GRID_Y_BOX_COUNT = 3
     BOX_X_TILE_COUNT = 3
     BOX_Y_TILE_COUNT = 3
-    BOX_BORDER_WIDTH = 1
-    BOX_BORDER_COLOR = (0,0,0)
-
-    boxes = []
-    columns = []
-    rows = []
-    grid = []
-    tiles = []
+    BOX_BORDER_WIDTH = 3
+    BOX_BORDER_COLOR = colors.BLACK
 
     def __init__(self):
         """
@@ -29,9 +23,13 @@ class Grid(object):
         self.boxes = []
         self.columns = []
         self.rows = []
-        self.tiles = pygame.sprite.Group()
-
-        self._create_grid()
+        self._init_group_list(self.boxes, Grid.GRID_X_BOX_COUNT * Grid.GRID_Y_BOX_COUNT)
+        self._init_group_list(self.columns, Grid.GRID_Y_BOX_COUNT * Grid.BOX_Y_TILE_COUNT)
+        self._init_group_list(self.rows, Grid.GRID_X_BOX_COUNT * Grid.BOX_X_TILE_COUNT)
+        self.tiles = TileContainer()
+         # background is gonna get resized anyway, so don't worry about the size
+        self.background = pygame.Surface((1,1)).convert()
+        self.background.fill(colors.BLACK)
 
     def get_rect(self):
         """
@@ -40,9 +38,81 @@ class Grid(object):
         """
         return self.grid.get_rect()
 
+    def create_grid(self, screen, puzzle_definition):
+        """
+        Create the grid
+        """
+        # create all the tiles we need
+        tile_x_count = self._get_num_columns()
+        tile_y_count = self._get_num_rows()
+
+        tile_position = (0,0)
+        max_size = (0,0)
+        for i in range(tile_x_count * tile_y_count):
+            # get the indexes for column, row, and box
+            c_index, r_index, b_index = self._get_col_row_box(i)
+
+            # we need a tile before anything else
+            t = self._create_tile(i, puzzle_definition[i])
+
+            # pop it into the total group of tiles
+            self.tiles.add(t)
+
+            # add it to the defined column, row, and box groups
+            self.columns[c_index].add(t)
+            self.rows[r_index].add(t)
+            self.boxes[b_index].add(t)
+
+            # secure the backreferences in the tile
+            t.column = self.columns[c_index]
+            t.row = self.rows[r_index]
+            t.box = self.boxes[b_index]
+
+            # make sure the tiles are in their correct locations
+            self._update_position(t, tile_position)
+
+        # reposition the boxes
+        for i in range(len(self.boxes)):
+            x_offset = Grid.BOX_BORDER_WIDTH * (1 + (i % Grid.GRID_X_BOX_COUNT))
+            y_offset = Grid.BOX_BORDER_WIDTH * (1 + (i / Grid.GRID_Y_BOX_COUNT))
+            self.boxes[i].move((x_offset, y_offset))
+
+        # the last added tile will be the bottom-right corner; fetch that
+        # so we can resize the background
+        print ("do")
+        max_tile = self.tiles.get_by_index(len(self.tiles) - 1)
+        max_x, max_y = max_tile.rect.bottomright
+        max_x += Grid.BOX_BORDER_WIDTH
+        max_y += Grid.BOX_BORDER_WIDTH
+        self.background = pygame.transform.scale(self.background, (max_x, max_y))
+        print ((max_x, max_y))
+
+        self.tiles.draw(self.background)
+        screen.blit(self.background, (0,0))
+
+    def get_tile_at_pos(self, position):
+        """
+        Gets the Tile which is at the given position (in real-world coordinates)
+        :param position: tuple of real-world coordinates (x, y)
+        :return Tile:
+        """
+        x_coord, y_coord = position
+        column = x_coord / Tile.TILE_WIDTH
+        row = y_coord / Tile.TILE_HEIGHT
+        index = (row * self._get_num_rows()) + column
+        return self.tiles.get_by_index(index)
+
+    def _init_group_list(self, group_list, count):
+        """
+        Makes the given group list ready to receive tiles
+        """
+        for i in range(count):
+            group_list.append(TileContainer())
+
     def _get_col_row_box(self, tile_index):
         """
         Returns the column, row, and box index for the given tile index
+        :param tile_index: index for the tile
         :return int:
         """
         grid_width = Grid.BOX_X_TILE_COUNT * Grid.GRID_X_BOX_COUNT
@@ -54,88 +124,13 @@ class Grid(object):
 
         return col, row, box
 
-    def _create_grid(self):
-        """
-        Create the grid
-        """
-        # create all the tiles we need
-        tile_x_count = Grid.GRID_X_BOX_COUNT * Grid.BOX_X_TILE_COUNT
-        tile_y_count = Grid.GRID_Y_BOX_COUNT * Grid.BOX_Y_TILE_COUNT
+    def _update_position(self, tile, position):
+        x, y = position
+        x = tile.id % (Grid.BOX_X_TILE_COUNT * Grid.GRID_X_BOX_COUNT)
+        y = tile.id / (Grid.BOX_Y_TILE_COUNT * Grid.GRID_Y_BOX_COUNT)
+        tile.move_to((x, y))
 
-        tile_position = (0,0)
-        row = 0
-        column = 0
-        box = 0
-        for i in range(tile_x_count * tile_y_count):
-            # we need a tile before anything else
-            t = self._create_tile(i)
-
-            # check to see if we're starting a box, either vertically
-            # or horizontally; if so, bump the position appropriately
-            col_index, row_index, box_index = self._get_col_row_box(i)
-
-
-
-            # pop it into the total group of tiles
-            self.tiles.add(t)
-
-
-
-
-        for i in range(0, (tile_x_count * tile_y_count)):
-            self.tiles.add(self._create_tile(i))
-
-        # now, create each box
-        b = None
-        for i in range(0, (Grid.GRID_X_BOX_COUNT * Grid.GRID_Y_BOX_COUNT)):
-            if b is None:
-                b = TileContainer(BoxLayout)
-                tmp_box = b
-            else:
-                tmp_box = b.copy()
-            self.boxes.append(tmp_box)
-
-        # attach the tiles to the boxes, columns, and rows
-        box_count = Grid.GRID_X_BOX_COUNT * Grid.GRID_Y_BOX_COUNT
-        i = 0
-        for tile in iter(self.tiles):
-            target_box = i / box_count # yay integer math!
-            x_coord = (i % Grid.BOX_X_TILE_COUNT) * Tile.TILE_WIDTH + Grid.BOX_BORDER_WIDTH
-            y_coord = ((i / Grid.BOX_X_TILE_COUNT) % Grid.BOX_Y_TILE_COUNT) * Tile.TILE_HEIGHT + Grid.BOX_BORDER_WIDTH
-            self.boxes[target_box].update(tile, (x_coord, y_coord))
-            tile.box = self.boxes[target_box]
-
-            tile_row_offset = (target_box / Grid.GRID_X_BOX_COUNT) * Grid.GRID_Y_BOX_COUNT
-            base_row_index = i - (target_box * box_count) / Grid.GRID_X_BOX_COUNT
-            row_index = base_row_index + tile_row_offset
-            if row_index >= len(self.rows):
-                self.rows.append(TileContainer(RowLayout))
-            self.rows[row_index].add(tile)
-            tile.row = self.rows[row_index]
-
-            tile_column_offset = (target_box % Grid.GRID_Y_BOX_COUNT) * Grid.GRID_Y_BOX_COUNT
-            base_column_index = i % Grid.GRID_Y_BOX_COUNT
-            column_index = base_column_index + tile_column_offset
-            if column_index >= len(self.columns):
-                self.columns.append(TileContainer(ColumnLayout))
-            self.columns[column_index].add(tile)
-            tile.column = self.columns[column_index]
-
-            i += 1
-
-        # create the main grid container
-        box_width = Tile.TILE_WIDTH * Grid.BOX_X_TILE_COUNT + 5
-        box_height = Tile.TILE_HEIGHT * Grid.BOX_Y_TILE_COUNT + 5
-        self.grid = pygame.Surface((box_width * Grid.GRID_X_BOX_COUNT, box_height * Grid.GRID_Y_BOX_COUNT))
-
-        # attach the boxes
-        for i in range(len(self.boxes)):
-            x_coord = (i % Grid.GRID_X_BOX_COUNT) * box_width
-            y_coord = ((i / Grid.GRID_X_BOX_COUNT) % Grid.GRID_Y_BOX_COUNT) * box_height
-            self.boxes[i].draw(self.grid)
-
-
-    def _create_tile(self, id, color=None):
+    def _create_tile(self, id, puzzle_value):
         """
         Return an individual tile
 
@@ -143,53 +138,155 @@ class Grid(object):
         :return Surface:
         """
         t = Tile(id)
-        t.set_text(t.id)
+        t.set_value(puzzle_value)
         return t
+
+    def _get_num_rows(self):
+        return Grid.BOX_Y_TILE_COUNT * Grid.GRID_Y_BOX_COUNT
+
+    def _get_num_columns(self):
+        return Grid.BOX_X_TILE_COUNT * Grid.GRID_X_BOX_COUNT
+
+    def _get_num_boxes(self):
+        return Grid.GRID_X_BOX_COUNT * Grid.GRID_Y_BOX_COUNT
+
+
+class TileContainer(object):
+    def __init__(self, *sprites):
+        """
+        constructor
+        :param *sprites: list, group, or single sprite
+        """
+        self.group = pygame.sprite.Group()
+        self.tile_list = []
+        for sprite in sprites:
+            self.group.add(sprite)
+            self.tile_list.append(sprite)
+
+    def __getattr__(self, name):
+        """
+        Allows all methods, except for the ones specified here, to go through
+        to the underlying group
+        :param name: name of the attribute to get
+        :return function:
+        """
+        return getattr(self.group, name)
+
+    def add(self, *sprites):
+        """
+        Adds a sprite, group of sprites, or list of sprites to this container
+        and to the underlying group
+        :param *sprites: list, group, or single sprite
+        """
+        self.group.add(sprites)
+        for sprite in sprites:
+            self.tile_list.append(sprite)
+
+    def move(self, distance):
+        """
+        Moves all sprites in this group by distance
+        :param distance: tuple of (width, height)
+        """
+        for tile in self.group:
+            tile.move_relative(distance, False)
+
+    def get_by_index(self, index):
+        """
+        Fetches a single sprite by its index in the list
+        :param index: int the sprite's index
+        :return Sprite:
+        """
+        return self.tile_list[index]
+
+    def update_all(self, grid):
+        for tile in self.group:
+            tile.update()
+        self.group.draw(grid.background)
+
+    def __iter__(self):
+        return self.group.__iter__()
+
+    def __len__(self):
+        return len(self.tile_list)
 
 
 class Tile(pygame.sprite.DirtySprite):
-    TILE_WIDTH = 40
-    TILE_HEIGHT = 40
+    TILE_WIDTH = 80
+    TILE_HEIGHT = 80
+
+    background = pygame.transform.scale(pygame.image.load("assets/tile.png"),
+                                        (TILE_WIDTH, TILE_HEIGHT))
 
     DEFAULT_FONT = "monospace"
 
-    def __init__(self, id, color = None, *args, **kwargs):
+    def __init__(self, id, *args, **kwargs):
         """
         Constructor for this object; builds the Surface as well
         """
         super(Tile, self).__init__()
         self.id = id
         self.font = None
-        self.background = pygame.Surface((Tile.TILE_WIDTH, Tile.TILE_HEIGHT))
-        self.set_color(color)
         self.box = None
         self.row = None
         self.column = None
+        self.value = None
+        self.dirty = 1
+        self.tint_surface = None
 
-    def set_color(self, color = None):
+        self.image = Tile.background.subsurface(Tile.background.get_rect()).convert_alpha()
+        self.rect = self.image.get_rect()
+
+    def move_relative(self, distance, use_tile_coords = True):
         """
-        Sets the color for this tile and updates the rendered version
-
-        :param color: tuple in the form (r, g, b)
+        Moves this tile to another location relative to the current location.
+        As an example, if this tile is at (2,2) and position is (1,1), the tile
+        will end up at (3,3). Tile is anchored on the top-left corner of the rect
+        :param distance: how far to move the tile
+        :param use_tile_coords: if set to true, moves by number of tiles, not pixels
         """
-        if color is None:
-            r = random.randrange(0, 255)
-            g = random.randrange(0, 255)
-            b = random.randrange(0, 255)
-            color = (r, g, b)
-        self.color = color
-        self.background.fill(color)
+        x, y = distance
+        if use_tile_coords:
+            x *= Tile.TILE_WIDTH
+            y *= Tile.TILE_HEIGHT
+        self.rect.left += x
+        self.rect.top += y
 
-    def set_text(self, string, coords=(1,1)):
+    def move_to(self, position, use_tile_coords = True):
+        """
+        Moves this tile to another location. Tile is anchored on the topleft
+        corner of the rect
+        :param position: new location for the tile
+        :param use_tile_coords: if set to true, moves by number of tiles, not pixels
+        """
+        x, y = position
+        if use_tile_coords:
+            x *= Tile.TILE_WIDTH
+            y *= Tile.TILE_HEIGHT
+        self.rect.left = x
+        self.rect.top = y
+
+    def set_text(self, string):
         """
         Set the text for this tile. Refresh the display
         :param str:
         """
-        print string
-        label_font = pygame.font.SysFont(self.get_font(), 15)
-        label = label_font.render(str(string), 1, self.get_text_color())
-        self.background.blit(label, coords)
+        label_font = pygame.font.SysFont(self.get_font(), 32)
+        label = label_font.render(string, 1, self.get_text_color())
+        self.image.blit(Tile.background, (0, 0))
 
+        label_rect = label.get_rect()
+        label_rect.centerx = Tile.TILE_WIDTH / 2
+        label_rect.centery = Tile.TILE_HEIGHT / 2
+        self.image.blit(label, label_rect)
+
+    def set_value(self, value):
+        """
+        Set the value for this tile
+        """
+        if value == 0:
+            return
+        self.value = value
+        self.set_text(str(self.value))
 
     def get_font(self):
         """
@@ -204,37 +301,42 @@ class Tile(pygame.sprite.DirtySprite):
         """
         Get the color for the font
         """
-        return (0,0,0)
+        return colors.BLACK
 
+    def set_tint(self, color=None):
+        """
+        Sets the tint for this tile.
+        :param color: tuple of (R,G,B)
+        """
+        color = color + (64,)
 
-class TileContainer(pygame.sprite.LayeredUpdates):
-    """
-    Container for a list of tiles. Has a background which is rendered and
-    a group which contains other sprites
-    """
-    def __init__(self, layout):
-        super(TileContainer, self).__init__()
-        self.tiles = pygame.sprite.Group()
-        self.layout = layout
+        self.tint_surface = pygame.Surface((Tile.TILE_WIDTH, Tile.TILE_HEIGHT))
+        self.tint_surface.convert_alpha()
+        self.tint_surface.fill(color)
 
-    def do_highlight(self):
-        self.layout.do_highlight(self.tiles)
+        self.dirty = 1
 
+    def on_click(self):
+        """
+        Handler for mouse clicks on this tile
+        """
+        print "Tile.on_click: %s" % self.id
+        self.set_tint(colors.YELLOW)
+        for tile in self.box:
+            if tile is self:
+                continue
+            print "Tile.on_click: other box tiles: %s" % tile.id
+            tile.set_tint(colors.LIGHT_GREY)
 
+    def update(self):
+        if self.dirty < 1:
+            return
 
-class BoxLayout():
-    @staticmethod
-    def do_highlight(self, tiles):
-        print "box %d" % len(tiles)
+        self.image.blit(self.background, (0,0))
+        if self.tint_surface is not None:
+            self.image.blit(self.tint_surface, (0,0))
+        if self.value is not None:
+            self.set_text(str(self.value))
 
-
-class RowLayout():
-    @staticmethod
-    def do_highlight(self, tiles):
-        print "row %d" % len(tiles)
-
-
-class ColumnLayout():
-    @staticmethod
-    def do_highlight(self, tiles):
-        print "column %d" % len(tiles)
+        if self.dirty == 1:
+            self.dirty  = 0
