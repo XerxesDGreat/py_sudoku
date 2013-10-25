@@ -15,6 +15,8 @@ def main():
     grid = gameboard.Grid()
     grid.create_grid(screen, puzzle)
 
+    selected = None
+
     while 1:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: quit()
@@ -23,9 +25,11 @@ def main():
                     quit()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if pygame.mouse.get_pressed()[0]:
-                    tile = grid.get_tile_at_pos(pygame.mouse.get_pos())
-                    print "tl: %s, br: %s" % (str(tile.rect.topleft), str(tile.rect.bottomright))
-                    tile.on_click()
+                    if selected is not None:
+                        selected.on_deselect()
+                    selected = grid.get_tile_at_pos(pygame.mouse.get_pos())
+                    print "tl: %s, br: %s" % (str(selected.rect.topleft), str(selected.rect.bottomright))
+                    selected.on_click()
         grid.tiles.update_all(grid)
         screen.blit(grid.background, (0,0))
         pygame.display.update()

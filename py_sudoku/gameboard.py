@@ -64,9 +64,8 @@ class Grid(object):
             self.boxes[b_index].add(t)
 
             # secure the backreferences in the tile
-            t.column = self.columns[c_index]
-            t.row = self.rows[r_index]
-            t.box = self.boxes[b_index]
+            t.set_tile_groups(self.boxes[b_index], self.rows[r_index],
+                              self.columns[c_index])
 
             # make sure the tiles are in their correct locations
             self._update_position(t, tile_position)
@@ -172,6 +171,21 @@ class TileContainer(object):
         """
         return getattr(self.group, name)
 
+    def __add__(self, other):
+        """
+        How to handle adding an instance of TileContainer to something else
+        using the addition operator.
+        :param other: the item which we're adding to this instance
+        """
+        if type(other) != TileContainer:
+            raise TypeError("Cannot add object of type %s to object of type TileContainer" % type(other))
+
+        both = []
+        for list in [self.tile_list, other.tile_list]:
+            for tile in list:
+                both.append(tile)
+        return TileContainer(both)
+
     def add(self, *sprites):
         """
         Adds a sprite, group of sprites, or list of sprites to this container
@@ -213,9 +227,11 @@ class TileContainer(object):
 class Tile(pygame.sprite.DirtySprite):
     TILE_WIDTH = 80
     TILE_HEIGHT = 80
+    TILE_SIZE = TILE_WIDTH, TILE_HEIGHT
 
-    background = pygame.transform.scale(pygame.image.load("assets/tile.png"),
-                                        (TILE_WIDTH, TILE_HEIGHT))
+    background = None
+    yellow_tint = None
+    light_grey_tint = None
 
     DEFAULT_FONT = "monospace"
 
@@ -226,15 +242,32 @@ class Tile(pygame.sprite.DirtySprite):
         super(Tile, self).__init__()
         self.id = id
         self.font = None
+
         self.box = None
         self.row = None
         self.column = None
+        self._divisions = None
+
         self.value = None
         self.dirty = 1
         self.tint_surface = None
 
-        self.image = Tile.background.subsurface(Tile.background.get_rect()).convert_alpha()
+        self._set_up_prototypes()
+
+        img = Tile.background.subsurface(Tile.background.get_rect())
+        self.image = img.convert()
         self.rect = self.image.get_rect()
+
+    def set_tile_groups(self, box, row, column):
+        self.box = box
+        self.row = row
+        self.column = column
+
+    @property
+    def divisions(self):
+        if self._divisions is None:
+            self._divisions = self.box + self.row + self.column
+        return self._divisions
 
     def move_relative(self, distance, use_tile_coords = True):
         """
@@ -272,7 +305,6 @@ class Tile(pygame.sprite.DirtySprite):
         """
         label_font = pygame.font.SysFont(self.get_font(), 32)
         label = label_font.render(string, 1, self.get_text_color())
-        self.image.blit(Tile.background, (0, 0))
 
         label_rect = label.get_rect()
         label_rect.centerx = Tile.TILE_WIDTH / 2
@@ -308,35 +340,56 @@ class Tile(pygame.sprite.DirtySprite):
         Sets the tint for this tile.
         :param color: tuple of (R,G,B)
         """
-        color = color + (64,)
-
-        self.tint_surface = pygame.Surface((Tile.TILE_WIDTH, Tile.TILE_HEIGHT))
-        self.tint_surface.convert_alpha()
+        self.tint_surface = pygame.Surface(Tile.TILE_SIZE)
+        self.tint_surface.set_alpha(128)
         self.tint_surface.fill(color)
 
+        self.dirty = 1
+
+    def untint(self):
+        self.tint_surface = None
         self.dirty = 1
 
     def on_click(self):
         """
         Handler for mouse clicks on this tile
         """
-        print "Tile.on_click: %s" % self.id
+        self.on_select()
+
+    def on_select(self):
+        """
+        How to handle this tile being selected
+        """
         self.set_tint(colors.YELLOW)
-        for tile in self.box:
+        for tile in self.divisions:
             if tile is self:
                 continue
-            print "Tile.on_click: other box tiles: %s" % tile.id
-            tile.set_tint(colors.LIGHT_GREY)
+            tile.set_tint(colors.BLUE)
+
+
+    def on_deselect(self):
+        """
+        How to handle this tile being deselected
+        """
+        for tile in self.divisions:
+            tile.untint()
 
     def update(self):
         if self.dirty < 1:
             return
 
         self.image.blit(self.background, (0,0))
+
         if self.tint_surface is not None:
             self.image.blit(self.tint_surface, (0,0))
+
         if self.value is not None:
             self.set_text(str(self.value))
 
         if self.dirty == 1:
             self.dirty  = 0
+
+    def _set_up_prototypes(self):
+        if Tile.background is None:
+            img = pygame.image.load("assets/tile.png").convert()
+            Tile.background = pygame.transform.scale(img, Tile.TILE_SIZE)
