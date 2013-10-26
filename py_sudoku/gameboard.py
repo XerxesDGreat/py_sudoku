@@ -78,16 +78,42 @@ class Grid(object):
 
         # the last added tile will be the bottom-right corner; fetch that
         # so we can resize the background
-        print ("do")
         max_tile = self.tiles.get_by_index(len(self.tiles) - 1)
         max_x, max_y = max_tile.rect.bottomright
         max_x += Grid.BOX_BORDER_WIDTH
         max_y += Grid.BOX_BORDER_WIDTH
         self.background = pygame.transform.scale(self.background, (max_x, max_y))
-        print ((max_x, max_y))
 
         self.tiles.draw(self.background)
         screen.blit(self.background, (0,0))
+
+    def move_sel_in_direction(self, tile, direction):
+        """
+        Gets the Tile which one unit in the given direction from the provided
+        tile
+        :param tile: Tile which is the starting point
+        :param direction: which direction to move
+        :return Tile:
+        """
+        new_tile = tile
+        row = tile.id / self._get_num_rows()
+        column = tile.id % self._get_num_columns()
+
+        if direction == pygame.K_RIGHT:
+            if column < self._get_num_columns() - 1:
+                new_tile = self.tiles.get_by_index(tile.id + 1)
+        elif direction == pygame.K_LEFT:
+            if column > 0:
+                new_tile = self.tiles.get_by_index(tile.id - 1)
+        elif direction == pygame.K_UP:
+            if row > 0:
+                new_tile = self.tiles.get_by_index(tile.id - self._get_num_columns())
+        elif direction == pygame.K_DOWN:
+            if row < self._get_num_rows() - 1:
+                new_tile = self.tiles.get_by_index(tile.id + self._get_num_columns())
+
+        return new_tile
+
 
     def get_tile_at_pos(self, position):
         """
@@ -136,8 +162,7 @@ class Grid(object):
         :param color: A tuple describing the color of the tile
         :return Surface:
         """
-        t = Tile(id)
-        t.set_value(puzzle_value)
+        t = Tile(id, puzzle_value)
         return t
 
     def _get_num_rows(self):
@@ -213,9 +238,30 @@ class TileContainer(object):
         return self.tile_list[index]
 
     def update_all(self, grid):
+        """
+        Updates all tiles in this group, checking for conflicts. Blits them onto
+        the provided grid
+        :param grid: Surface object
+        """
+        #self._check_for_conflicts()
         for tile in self.group:
             tile.update()
         self.group.draw(grid.background)
+
+    def _check_for_conflicts(self):
+        """
+        Goes through all the tiles in this list and compares the values, marking
+        any with the same value as being conflicted. Operates in n log n space.
+        """
+        total = len(self.tile_list)
+        for i in range(total):
+            t1 = self.tile_list[i]
+            for j in range(i + 1, total):
+                t2 = self.tile_list[j]
+                if t1.value == t2.value:
+                    t1.conflicted = True
+                    t2.conflicted = True
+                    break
 
     def __iter__(self):
         return self.group.__iter__()
@@ -233,30 +279,34 @@ class Tile(pygame.sprite.DirtySprite):
     yellow_tint = None
     light_grey_tint = None
 
-    DEFAULT_FONT = "monospace"
+    DEFAULT_FONT = "Courier New Regular"
+    BOLD_FONT = "Courier New Bold"
 
-    def __init__(self, id, *args, **kwargs):
+    def __init__(self, id, init_value = None, *args, **kwargs):
         """
         Constructor for this object; builds the Surface as well
         """
         super(Tile, self).__init__()
         self.id = id
         self.font = None
-
         self.box = None
         self.row = None
         self.column = None
         self._divisions = None
-
-        self.value = None
+        self.value = init_value
+        self.immutable = False
+        self._conflicted = False
         self.dirty = 1
         self.tint_surface = None
 
         self._set_up_prototypes()
-
         img = Tile.background.subsurface(Tile.background.get_rect())
         self.image = img.convert()
         self.rect = self.image.get_rect()
+
+        if self.value is not None:
+            self.immutable = True
+
 
     def set_tile_groups(self, box, row, column):
         self.box = box
@@ -268,6 +318,16 @@ class Tile(pygame.sprite.DirtySprite):
         if self._divisions is None:
             self._divisions = self.box + self.row + self.column
         return self._divisions
+
+    @property
+    def conflicted(self):
+        return self._conflicted
+
+    @conflicted.setter
+    def conflicted(self, flag):
+        if flag != self._conflicted:
+            self.dirty = True
+        self._conflicted = flag
 
     def move_relative(self, distance, use_tile_coords = True):
         """
@@ -298,13 +358,18 @@ class Tile(pygame.sprite.DirtySprite):
         self.rect.left = x
         self.rect.top = y
 
-    def set_text(self, string):
+    def set_text(self, string, bold = False):
         """
         Set the text for this tile. Refresh the display
         :param str:
         """
-        label_font = pygame.font.SysFont(self.get_font(), 32)
-        label = label_font.render(string, 1, self.get_text_color())
+        color = colors.MEDIUM_GREY
+        if self.conflicted:
+            color = colors.RED
+        elif self.immutable:
+            color = colors.BLACK
+        label_font = pygame.font.SysFont(self.get_font(bold), 32)
+        label = label_font.render(string, 1, color)
 
         label_rect = label.get_rect()
         label_rect.centerx = Tile.TILE_WIDTH / 2
@@ -313,20 +378,35 @@ class Tile(pygame.sprite.DirtySprite):
 
     def set_value(self, value):
         """
-        Set the value for this tile
+        Set the value for this tile.
         """
-        if value == 0:
+        if self.immutable:
             return
-        self.value = value
-        self.set_text(str(self.value))
 
-    def get_font(self):
+        self.value = value
+        self.dirty = 1
+        has_conflicts = False
+        for tile in self.divisions:
+            if tile is self:
+                continue
+            if tile.value == self.value:
+                has_conflicts = True
+                tile.conflicted = True
+            else:
+                tile.conflicted = False
+
+        self.conflicted = has_conflicts
+
+        #self.set_text(str(self.value))
+
+    def get_font(self, bold = False):
         """
         Get the name of the font to use
+        :param bold: Whether the font should be bold
         :return str:
         """
         if self.font is None:
-            return Tile.DEFAULT_FONT
+            return Tile.BOLD_FONT if bold else Tile.DEFAULT_FONT
         return self.font
 
     def get_text_color(self):
@@ -335,13 +415,13 @@ class Tile(pygame.sprite.DirtySprite):
         """
         return colors.BLACK
 
-    def set_tint(self, color=None):
+    def set_tint(self, color=None, alpha = 128):
         """
         Sets the tint for this tile.
         :param color: tuple of (R,G,B)
         """
         self.tint_surface = pygame.Surface(Tile.TILE_SIZE)
-        self.tint_surface.set_alpha(128)
+        self.tint_surface.set_alpha(alpha)
         self.tint_surface.fill(color)
 
         self.dirty = 1
@@ -364,7 +444,7 @@ class Tile(pygame.sprite.DirtySprite):
         for tile in self.divisions:
             if tile is self:
                 continue
-            tile.set_tint(colors.BLUE)
+            tile.set_tint(colors.BLUE, 64)
 
 
     def on_deselect(self):
@@ -375,6 +455,9 @@ class Tile(pygame.sprite.DirtySprite):
             tile.untint()
 
     def update(self):
+        """
+        Updates the display for this tile
+        """
         if self.dirty < 1:
             return
 
