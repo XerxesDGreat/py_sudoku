@@ -114,6 +114,9 @@ class Grid(object):
 
         return new_tile
 
+    def is_complete(self):
+        return False
+
 
     def get_tile_at_pos(self, position):
         """
@@ -288,10 +291,14 @@ class Tile(pygame.sprite.DirtySprite):
         """
         super(Tile, self).__init__()
         self.id = id
-        self.font = None
         self.box = None
         self.row = None
         self.column = None
+
+        self.group_completed = False
+        self.selected = False
+        self.group_selected = False
+
         self._divisions = None
         self.value = init_value
         self.immutable = False
@@ -358,24 +365,6 @@ class Tile(pygame.sprite.DirtySprite):
         self.rect.left = x
         self.rect.top = y
 
-    def set_text(self, string, bold = False):
-        """
-        Set the text for this tile. Refresh the display
-        :param str:
-        """
-        color = colors.MEDIUM_GREY
-        if self.conflicted:
-            color = colors.RED
-        elif self.immutable:
-            color = colors.BLACK
-        label_font = pygame.font.SysFont(self.get_font(bold), 32)
-        label = label_font.render(string, 1, color)
-
-        label_rect = label.get_rect()
-        label_rect.centerx = Tile.TILE_WIDTH / 2
-        label_rect.centery = Tile.TILE_HEIGHT / 2
-        self.image.blit(label, label_rect)
-
     def set_value(self, value):
         """
         Set the value for this tile.
@@ -385,11 +374,20 @@ class Tile(pygame.sprite.DirtySprite):
 
         self.value = value
         self.dirty = 1
+
+        self._check_for_conflicts()
+
+    def _check_for_conflicts(self):
+        """
+        Checks all other tiles in this tile's groups for conflicting values.
+        Will perform resetting conflicted state of all tiles, suppressing the
+        setting again of a conflict state if the value is None
+        """
         has_conflicts = False
         for tile in self.divisions:
             if tile is self:
                 continue
-            if tile.value == self.value:
+            if self.value is not None and tile.value == self.value:
                 has_conflicts = True
                 tile.conflicted = True
             else:
@@ -397,7 +395,6 @@ class Tile(pygame.sprite.DirtySprite):
 
         self.conflicted = has_conflicts
 
-        #self.set_text(str(self.value))
 
     def get_font(self, bold = False):
         """
@@ -405,30 +402,13 @@ class Tile(pygame.sprite.DirtySprite):
         :param bold: Whether the font should be bold
         :return str:
         """
-        if self.font is None:
-            return Tile.BOLD_FONT if bold else Tile.DEFAULT_FONT
-        return self.font
+        return Tile.BOLD_FONT if bold else Tile.DEFAULT_FONT
 
     def get_text_color(self):
         """
         Get the color for the font
         """
         return colors.BLACK
-
-    def set_tint(self, color=None, alpha = 128):
-        """
-        Sets the tint for this tile.
-        :param color: tuple of (R,G,B)
-        """
-        self.tint_surface = pygame.Surface(Tile.TILE_SIZE)
-        self.tint_surface.set_alpha(alpha)
-        self.tint_surface.fill(color)
-
-        self.dirty = 1
-
-    def untint(self):
-        self.tint_surface = None
-        self.dirty = 1
 
     def on_click(self):
         """
@@ -440,39 +420,88 @@ class Tile(pygame.sprite.DirtySprite):
         """
         How to handle this tile being selected
         """
-        self.set_tint(colors.YELLOW)
+        self.selected = True
         for tile in self.divisions:
-            if tile is self:
-                continue
-            tile.set_tint(colors.BLUE, 64)
-
+            if tile is not self:
+                tile.group_selected = True
 
     def on_deselect(self):
         """
         How to handle this tile being deselected
         """
         for tile in self.divisions:
-            tile.untint()
+            tile.group_selected = False
+            tile.selected = False
 
-    def update(self):
+    def on_edit(self, key):
         """
-        Updates the display for this tile
+        Performs some edit operation on this tile
+        :param key: pygame constant for the value of the key
         """
-        if self.dirty < 1:
-            return
+        if key == pygame.K_BACKSPACE or key == pygame.K_DELETE:
+            self.set_value(None)
 
-        self.image.blit(self.background, (0,0))
-
-        if self.tint_surface is not None:
-            self.image.blit(self.tint_surface, (0,0))
-
-        if self.value is not None:
-            self.set_text(str(self.value))
-
-        if self.dirty == 1:
-            self.dirty  = 0
 
     def _set_up_prototypes(self):
         if Tile.background is None:
             img = pygame.image.load("assets/tile.png").convert()
             Tile.background = pygame.transform.scale(img, Tile.TILE_SIZE)
+
+
+    #
+    #
+    # Visual update methods
+    #
+    #
+    def update(self):
+        """
+        Updates the display for this tile
+        """
+        if self.dirty < 1:
+            # let's just try updating all of them
+            pass
+            #return
+        self._update_background()
+        self._update_text()
+        self.dirty = 2 if self.dirty == 2 else 0
+
+    def _update_background(self):
+        """
+        Updates the background imagery based on the tile's current state
+        """
+        self.image.blit(self.background, (0,0))
+
+        alpha = 64
+        color = None
+        if self.conflicted:
+            color = colors.RED
+        elif self.selected:
+            color = colors.YELLOW
+            alpha = 128
+        elif self.group_selected:
+            color = colors.BLUE
+        elif self.group_completed:
+            color = colors.GREEN
+
+        if color is not None:
+            tint = pygame.Surface(Tile.TILE_SIZE)
+            tint.set_alpha(alpha)
+            tint.fill(color)
+            self.image.blit(tint, (0,0))
+
+    def _update_text(self, *args):
+        """
+        Updates the text display for this tile
+        """
+        if self.value is None:
+            return
+        bold = self.immutable or self.conflicted
+        color = colors.MEDIUM_GREY if not self.immutable else colors.BLACK
+        color = color if not self.conflicted else colors.RED
+        label_font = pygame.font.SysFont(self.get_font(bold), 32)
+        label = label_font.render(str(self.value), 1, color)
+
+        label_rect = label.get_rect()
+        label_rect.centerx = Tile.TILE_WIDTH / 2
+        label_rect.centery = Tile.TILE_HEIGHT / 2
+        self.image.blit(label, label_rect)

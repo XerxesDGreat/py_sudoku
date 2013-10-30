@@ -4,10 +4,13 @@ import pygame
 import sys
 import gameboard
 import os
+import time
+
 
 FPS = 60
 NUMBER_KEY_TYPE = "number"
 MOVEMENT_KEY_TYPE = "movement"
+EDIT_KEY_TYPE = "edit"
 
 def quit():
     """
@@ -39,7 +42,15 @@ def get_key_pressed_value(key):
     if key >= pygame.K_UP and key <= pygame.K_LEFT:
         type = MOVEMENT_KEY_TYPE
         value = key
+    if key == pygame.K_DELETE or key == pygame.K_BACKSPACE:
+        type = EDIT_KEY_TYPE
+        value = key
     return type, value
+
+def do_completion():
+    print "holy crap you're done!"
+    time.sleep(5)
+    quit()
 
 def main():
     """
@@ -94,6 +105,8 @@ def main():
                 # handle number key pressed
                 if key_type == NUMBER_KEY_TYPE:
                     selected.set_value(key_val)
+                elif key_type == EDIT_KEY_TYPE:
+                    selected.on_edit(key_val)
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if pygame.mouse.get_pressed()[0]:
@@ -107,6 +120,9 @@ def main():
         grid.tiles.update_all(grid)
         screen.blit(grid.background, (0,0))
         pygame.display.update()
+        if grid.is_complete():
+            do_completion()
+
 
 if __name__ == "__main__":
     main()
