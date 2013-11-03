@@ -112,7 +112,13 @@ def main():
                 if pygame.mouse.get_pressed()[0]:
                     if selected is not None:
                         selected.on_deselect()
-                    selected = grid.get_tile_at_pos(pygame.mouse.get_pos())
+                    pos = pygame.mouse.get_pos()
+                    clicked = [s for s in grid.tiles if s.rect.collidepoint(pos)]
+                    if len(clicked) > 1:
+                        raise Exception("Overlapping tiles at position %s" % pos)
+                    elif len(clicked) < 1:
+                        continue
+                    selected = clicked[0]
                     print "tl: %s, br: %s" % (str(selected.rect.topleft), str(selected.rect.bottomright))
                     selected.on_click()
 

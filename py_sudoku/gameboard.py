@@ -2,6 +2,7 @@ __author__ = 'josh'
 
 import pygame
 import colors
+import itertools
 
 class Grid(object):
     """
@@ -31,12 +32,20 @@ class Grid(object):
         self.background = pygame.Surface((1,1)).convert()
         self.background.fill(colors.BLACK)
 
+    @property
+    def width(self):
+        return self.get_rect().width
+
+    @property
+    def height(self):
+        return self.get_rect().height
+
     def get_rect(self):
         """
         Get the rectangle which contains the surface
         :return Rectangle:
         """
-        return self.grid.get_rect()
+        return self.background.get_rect()
 
     def create_grid(self, screen, puzzle_definition):
         """
@@ -115,8 +124,14 @@ class Grid(object):
         return new_tile
 
     def is_complete(self):
-        return False
-
+        """
+        Checks to see whether the entire grid is is_complete
+        :return Boolean:
+        """
+        for tile_group in itertools.chain(self.boxes, self.rows, self.columns):
+            if not tile_group.is_complete():
+                return False
+        return True
 
     def get_tile_at_pos(self, position):
         """
@@ -186,6 +201,8 @@ class TileContainer(object):
         """
         self.group = pygame.sprite.Group()
         self.tile_list = []
+        self.complete = False
+        self.complete_flags = [False for i in range(9)]
         for sprite in sprites:
             self.group.add(sprite)
             self.tile_list.append(sprite)
@@ -240,31 +257,44 @@ class TileContainer(object):
         """
         return self.tile_list[index]
 
+    def add_value(self, value):
+        """
+        Adds a value to the list of values which are represented in this group.
+        Will not do any checking to see if this value is conflicted; therefore,
+        perform that check before calling this function
+        :param value: the new value (1-9) to add
+        """
+        self.complete_flags[value - 1] = True
+
+    def remove_value(self, value):
+        """
+        Removes a value from the list of values which are represented in this
+        group. Will not do any checking to see if this value is conflicted;
+        therefore, perform that check before calling this function
+        :param value: the new value (1-9) to remove
+        """
+        self.complete_flags[value - 1] = False
+
+    def is_complete(self):
+        """
+        Determines whether this group is complete
+        :return Boolean:
+        """
+        for flag in self.complete_flags:
+            if not flag:
+                return False
+
+        return True
+
     def update_all(self, grid):
         """
         Updates all tiles in this group, checking for conflicts. Blits them onto
         the provided grid
         :param grid: Surface object
         """
-        #self._check_for_conflicts()
         for tile in self.group:
             tile.update()
         self.group.draw(grid.background)
-
-    def _check_for_conflicts(self):
-        """
-        Goes through all the tiles in this list and compares the values, marking
-        any with the same value as being conflicted. Operates in n log n space.
-        """
-        total = len(self.tile_list)
-        for i in range(total):
-            t1 = self.tile_list[i]
-            for j in range(i + 1, total):
-                t2 = self.tile_list[j]
-                if t1.value == t2.value:
-                    t1.conflicted = True
-                    t2.conflicted = True
-                    break
 
     def __iter__(self):
         return self.group.__iter__()
@@ -316,9 +346,20 @@ class Tile(pygame.sprite.DirtySprite):
 
 
     def set_tile_groups(self, box, row, column):
+        """
+        adds the various groups this tile is in
+        :param box: TileContainer
+        :param row: TileContainer
+        :param column: TileContainer
+        """
         self.box = box
         self.row = row
         self.column = column
+
+        if self.value is not None:
+            self.row.add_value(self.value)
+            self.box.add_value(self.value)
+            self.column.add_value(self.value)
 
     @property
     def divisions(self):
@@ -372,12 +413,22 @@ class Tile(pygame.sprite.DirtySprite):
         if self.immutable:
             return
 
+        if self.value is not None:
+            self.box.remove_value(self.value)
+            self.column.remove_value(self.value)
+            self.row.remove_value(self.value)
+
         self.value = value
         self.dirty = 1
 
-        self._check_for_conflicts()
+        self._update_conflicts()
 
-    def _check_for_conflicts(self):
+        if not self.conflicted and self.value is not None:
+            self.box.add_value(self.value)
+            self.column.add_value(self.value)
+            self.row.add_value(self.value)
+
+    def _update_conflicts(self):
         """
         Checks all other tiles in this tile's groups for conflicting values.
         Will perform resetting conflicted state of all tiles, suppressing the
